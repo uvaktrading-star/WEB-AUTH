@@ -8,21 +8,33 @@ const connectToDatabase = async () => {
     return mongoose.connect(MONGO_URI);
 };
 
-// Settings Schema එක
+// Settings Schema එක (ඔයාගේ Schema එකේ තිබුණු හැම settings එකක්ම මෙහි ඇත)
 const SettingsSchema = new mongoose.Schema({
     id: String,
     password: { type: String, default: 'not_set' },
     botName: String,
     ownerName: String,
     prefix: String,
+    workType: String,
+    botImage: { type: String, default: "null" },
+    alwaysOnline: String,
     autoRead: String,
     autoTyping: String,
     autoStatusSeen: String,
     autoStatusReact: String,
-    alwaysOnline: String,
     readCmd: String,
     autoVoice: String,
     autoReply: { type: String, default: 'false' },
+    connectionMsg: String,
+    buttons: String,
+    autoVoiceReply: String,
+    antidelete: String,
+    autoReact: String,
+    // --- 🛡️ Group Security Settings ---
+    badWords: String,
+    antiLink: String,
+    antiCmd: String,
+    paymentStatus: String,
     autoReplies: { type: Array, default: [] } 
 }, { collection: 'settings', strict: false });
 
@@ -30,7 +42,7 @@ const Settings = mongoose.models.Settings || mongoose.model('Settings', Settings
 
 // Vercel Serverless Function Handler
 export default async function handler(req, res) {
-    // CORS Headers (වෙබ් Dashboard එකේ සිට වැඩ කිරීමට)
+    // CORS Headers
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -46,24 +58,28 @@ export default async function handler(req, res) {
         // පරිශීලකයා පරීක්ෂා කිරීම
         const user = await Settings.findOne({ id: id });
         if (!user) return res.status(404).json({ success: false, error: "User not found!" });
-        if (user.password !== password) return res.status(401).json({ success: false, error: "Invalid Password." });
+        
+        // Password එක පරීක්ෂා කිරීම
+        if (user.password !== password) {
+            return res.status(401).json({ success: false, error: "Invalid Password." });
+        }
 
-        // Login Action
+        // --- 1. LOGIN ACTION ---
         if (action === "login") {
             return res.status(200).json({ success: true, settings: user });
         }
 
-        // Update Settings Action
+        // --- 2. UPDATE SETTINGS ACTION ---
         if (action === "updateSettings") {
-            // 1. Database එක Update කිරීම
+            // Database එක Update කිරීම
             await Settings.updateOne({ id: id }, { $set: settings });
 
-            // 2. බොට්ගේ RAM එක Refresh කිරීමට Signal එක යැවීම (Axios වෙනුවට Native Fetch භාවිතා කර ඇත)
+            // බොට්ගේ RAM එක Refresh කිරීමට Signal එක යැවීම
             if (botUrl) {
                 const signalUrl = `${botUrl.replace(/\/$/, "")}/update-cache?id=${id}`;
                 try {
-                    // Node 18+ වල fetch සෘජුවම වැඩ කරයි. Axios අවශ්‍ය නැත.
-                    await fetch(signalUrl).catch(e => console.log("Bot unreachable"));
+                    // Node 18+ වල fetch සෘජුවම වැඩ කරයි.
+                    await fetch(signalUrl).catch(e => console.log("Bot cache update request failed."));
                 } catch (err) {
                     console.error("Signal Sync Failed");
                 }
