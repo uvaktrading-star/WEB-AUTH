@@ -22,9 +22,6 @@ const SettingsSchema = new mongoose.Schema({
     alwaysOnline: String,
     readCmd: String,
     autoVoice: String,
-    connectionMsg: String, // අලුතින් එක් කළා
-    workType: String,   // අලුතින් එක් කළා
-    buttons: String,
     autoReply: { type: String, default: 'false' },
     autoReplies: { type: Array, default: [] } 
 }, { collection: 'settings', strict: false });
@@ -80,5 +77,3 @@ export default async function handler(req, res) {
         return res.status(500).json({ success: false, error: e.message });
     }
 }
-
-
