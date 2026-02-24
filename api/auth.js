@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 // MongoDB සම්බන්ධතාවය
-const MONGO_URI = "mongodb+srv://zanta-md:Akashkavindu12345@cluster0.iw4vklq.mongodb.net/test?retryWrites=true&w=majority";
+const MONGO_URI = "mongodb+srv://zanta-mini:Akashkavindu12345@zanta-mini.x1s0cjc.mongodb.net/?appName=zanta-mini";
 
 const connectToDatabase = async () => {
     if (mongoose.connection.readyState >= 1) return;
@@ -80,4 +80,5 @@ export default async function handler(req, res) {
         return res.status(500).json({ success: false, error: e.message });
     }
 }
+
 
