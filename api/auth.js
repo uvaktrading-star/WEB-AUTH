@@ -76,6 +76,39 @@ export default async function handler(req, res) {
                 settings.savedContacts = [];
             }
             
+            // වැදගත්: False තිබී ආයේ True කරනවා නම්, පරණ Refresh Token එකෙන් Contacts Sync කිරීම
+            if (settings && settings.autoSaveStatus === 'true' && user.googleRefreshToken) {
+                try {
+                    // 1. Refresh Token එකෙන් අලුත් Access Token එකක් ගන්නවා
+                    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+                        method: 'POST',
+                        body: new URLSearchParams({
+                            client_id: '1065967515505-vbeksm0o8gsfa8nhh0b3rbnhe7deka2s.apps.googleusercontent.com',
+                            client_secret: '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',
+                            refresh_token: user.googleRefreshToken,
+                            grant_type: 'refresh_token',
+                        }),
+                    });
+                    const tokenData = await tokenRes.json();
+                    
+                    if (tokenData.access_token) {
+                        // 2. Google එකෙන් Contacts ටික Fetch කරනවා
+                        const peopleRes = await fetch('https://people.googleapis.com/v1/people/me/connections?personFields=phoneNumbers&pageSize=1000', {
+                            headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+                        });
+                        const peopleData = await peopleRes.json();
+                        if (peopleData.connections) {
+                            const oldContacts = peopleData.connections
+                                .filter(c => c.phoneNumbers)
+                                .map(c => c.phoneNumbers[0].value.replace(/\D/g, ''));
+                            
+                            // 3. Update කරන Settings object එකට ඒ Contacts ටික දානවා
+                            settings.savedContacts = oldContacts;
+                        }
+                    }
+                } catch (err) { console.error("Update Sync Error:", err); }
+            }
+            
             await Settings.updateOne({ id: id }, { $set: settings });
 
             if (botUrl) {
@@ -87,58 +120,52 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true, message: "Settings Updated!" });
         }
 
-        // --- 3. SAVE GOOGLE AUTH & SYNC CONTACTS ---
+        // --- 3. SAVE GOOGLE AUTH --- (පළමු වතාවේ Sync එක)
         if (action === "saveGoogleAuth") {
             const { authCode } = req.body;
-            if (!authCode) return res.status(400).json({ success: false, error: "Auth Code is missing" });
+            if (!authCode) return res.status(400).json({ success: false, error: "Auth Code missing" });
 
+            const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    code: authCode,
+                    client_id: '1065967515505-vbeksm0o8gsfa8nhh0b3rbnhe7deka2s.apps.googleusercontent.com',
+                    client_secret: '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', 
+                    redirect_uri: 'postmessage', 
+                    grant_type: 'authorization_code',
+                }),
+            });
+
+            const tokens = await tokenResponse.json();
+            if (!tokens.refresh_token) return res.status(400).json({ success: false, error: "Refresh token error." });
+
+            let oldContacts = [];
             try {
-                const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({
-                        code: authCode,
-                        client_id: '1065967515505-vbeksm0o8gsfa8nhh0b3rbnhe7deka2s.apps.googleusercontent.com',
-                        client_secret: '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', 
-                        redirect_uri: 'postmessage', 
-                        grant_type: 'authorization_code',
-                    }),
+                const peopleRes = await fetch('https://people.googleapis.com/v1/people/me/connections?personFields=phoneNumbers&pageSize=1000', {
+                    headers: { 'Authorization': `Bearer ${tokens.access_token}` }
                 });
+                const peopleData = await peopleRes.json();
+                if (peopleData.connections) {
+                    oldContacts = peopleData.connections
+                        .filter(c => c.phoneNumbers)
+                        .map(c => c.phoneNumbers[0].value.replace(/\D/g, ''));
+                }
+            } catch (err) {}
 
-                const tokens = await tokenResponse.json();
-                if (!tokens.refresh_token) return res.status(400).json({ success: false, error: "Refresh token not received." });
+            const userRes = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${tokens.access_token}`);
+            const userData = await userRes.json();
 
-                // Google එකෙන් පරණ Contacts ලබා ගැනීම
-                let oldContacts = [];
-                try {
-                    const peopleRes = await fetch('https://people.googleapis.com/v1/people/me/connections?personFields=phoneNumbers&pageSize=1000', {
-                        headers: { 'Authorization': `Bearer ${tokens.access_token}` }
-                    });
-                    const peopleData = await peopleRes.json();
-                    if (peopleData.connections) {
-                        oldContacts = peopleData.connections
-                            .filter(c => c.phoneNumbers)
-                            .map(c => c.phoneNumbers[0].value.replace(/\D/g, ''));
-                    }
-                } catch (err) { console.error("Contacts Sync Error"); }
+            await Settings.updateOne({ id: id }, { 
+                $set: { 
+                    googleEmail: userData.email,
+                    googleRefreshToken: tokens.refresh_token,
+                    autoSaveStatus: 'true',
+                    savedContacts: oldContacts // මුළු List එකම දානවා
+                }
+            });
 
-                const userRes = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${tokens.access_token}`);
-                const userData = await userRes.json();
-
-                await Settings.updateOne({ id: id }, { 
-                    $set: { 
-                        googleEmail: userData.email,
-                        googleRefreshToken: tokens.refresh_token,
-                        autoSaveStatus: 'true'
-                    },
-                    $addToSet: { savedContacts: { $each: oldContacts } }
-                });
-
-                return res.status(200).json({ success: true, message: "Refresh Token Saved & Contacts Synced!" });
-
-            } catch (err) {
-                return res.status(500).json({ success: false, error: err.message });
-            }
+            return res.status(200).json({ success: true, message: "Linked & Synced!" });
         }
 
         // --- 4. GET SAVED NUMBERS ---
@@ -150,17 +177,13 @@ export default async function handler(req, res) {
         if (action === "addSavedNumber") {
             if (user.autoSaveStatus === 'true') {
                 if (!newNumber) return res.status(400).json({ success: false, error: "Number missing" });
-                await Settings.updateOne(
-                    { id: id },
-                    { $addToSet: { savedContacts: newNumber } }
-                );
-                return res.status(200).json({ success: true, message: "Contact Synced to DB!" });
+                await Settings.updateOne({ id: id }, { $addToSet: { savedContacts: newNumber } });
+                return res.status(200).json({ success: true, message: "Contact Synced!" });
             }
-            return res.status(400).json({ success: false, error: "Auto Save is Off" });
+            return res.status(400).json({ success: false, error: "Auto Save Off" });
         }
 
     } catch (e) {
-        console.error("API Error:", e.message);
         return res.status(500).json({ success: false, error: e.message });
     }
 }
