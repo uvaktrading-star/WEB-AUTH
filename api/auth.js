@@ -30,12 +30,14 @@ const SettingsSchema = new mongoose.Schema({
     autoVoiceReply: String,
     antidelete: String,
     autoReact: String,
-    // --- 🛡️ Group Security Settings ---
     badWords: String,
     antiLink: String,
     antiCmd: String,
     paymentStatus: String,
-    autoReplies: { type: Array, default: [] } 
+    autoReplies: { type: Array, default: [] },
+    googleEmail: { type: String, default: null },
+    googleRefreshToken: { type: String, default: null },
+    autoSaveStatus: { type: String, default: 'false' }
 }, { collection: 'settings', strict: false });
 
 const Settings = mongoose.models.Settings || mongoose.model('Settings', SettingsSchema);
@@ -53,7 +55,7 @@ export default async function handler(req, res) {
 
     try {
         await connectToDatabase();
-        const { id, password, action, settings, botUrl } = req.body; 
+        const { id, password, action, settings, botUrl, googleData } = req.body; 
 
         // පරිශීලකයා පරීක්ෂා කිරීම
         const user = await Settings.findOne({ id: id });
@@ -86,6 +88,21 @@ export default async function handler(req, res) {
             }
 
             return res.status(200).json({ success: true, message: "Settings Updated & Cache Synced!" });
+        }
+
+        if (action === "saveGoogleAuth") {
+            if (!googleData || !googleData.email) {
+                return res.status(400).json({ success: false, error: "Missing Google Data" });
+            }
+
+            await Settings.updateOne({ id: id }, { 
+                $set: { 
+                    googleEmail: googleData.email,
+                    googleRefreshToken: googleData.refreshToken,
+                    autoSaveStatus: 'true'
+                } 
+            });
+            return res.status(200).json({ success: true, message: "Google Account Linked!" });
         }
 
     } catch (e) {
