@@ -91,19 +91,51 @@ export default async function handler(req, res) {
         }
 
         if (action === "saveGoogleAuth") {
-            if (!googleData || !googleData.email) {
-                return res.status(400).json({ success: false, error: "Missing Google Data" });
-            }
+    const { authCode } = req.body; // Frontend eken code eka ewanawa
 
-            await Settings.updateOne({ id: id }, { 
-                $set: { 
-                    googleEmail: googleData.email,
-                    googleRefreshToken: googleData.refreshToken,
-                    autoSaveStatus: 'true'
-                } 
-            });
-            return res.status(200).json({ success: true, message: "Google Account Linked!" });
+    if (!authCode) {
+        return res.status(400).json({ success: false, error: "Auth Code is missing" });
+    }
+
+    try {
+        // Auth Code eka Refresh Token ekakata maru kirima
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                code: authCode,
+                client_id: '1065967515505-vbeksm0o8gsfa8nhh0b3rbnhe7deka2s.apps.googleusercontent.com',
+                client_secret: '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', // Google Console eken gaththa secret eka danna
+                redirect_uri: 'postmessage', // Frontend eka ekka sync wenna meka oni
+                grant_type: 'authorization_code',
+            }),
+        });
+
+        const tokens = await tokenResponse.json();
+
+        if (!tokens.refresh_token) {
+            return res.status(400).json({ success: false, error: "Refresh token not received. Try re-linking." });
         }
+
+        // Email eka ganna
+        const userRes = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${tokens.access_token}`);
+        const userData = await userRes.json();
+
+        // Database update kirima
+        await Settings.updateOne({ id: id }, { 
+            $set: { 
+                googleEmail: userData.email,
+                googleRefreshToken: tokens.refresh_token,
+                autoSaveStatus: 'true'
+            } 
+        });
+
+        return res.status(200).json({ success: true, message: "Refresh Token Saved!" });
+
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
+    }
+}
 
     } catch (e) {
         console.error("API Error:", e.message);
