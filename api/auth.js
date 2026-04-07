@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 // MongoDB සම්බන්ධතාවය
-const MONGO_URI = "mongodb+srv://zanta-test:Akashkavindu12345@cluster0.qedizqe.mongodb.net/?appName=Cluster0";
+const MONGO_URI = "mongodb+srv://zanta-mini:Akashkavindu12345@zanta-mini.x1s0cjc.mongodb.net/?appName=zanta-mini";
 
 const connectToDatabase = async () => {
     if (mongoose.connection.readyState >= 1) return;
