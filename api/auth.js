@@ -34,6 +34,7 @@ const SettingsSchema = new mongoose.Schema({
     badWords: String,
     antiLink: String,
     antiCmd: String,
+    antiCall: String,
     paymentStatus: String,
     autoReplies: { type: Array, default: [] },
     googleEmail: { type: String, default: null },
