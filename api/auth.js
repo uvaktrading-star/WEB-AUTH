@@ -40,6 +40,7 @@ const SettingsSchema = new mongoose.Schema({
     googleEmail: { type: String, default: null },
     googleRefreshToken: { type: String, default: null },
     autoSaveStatus: { type: String, default: 'false' },
+    footerText: { type: String, default: '> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴢᴀɴᴛᴀ ᴍɪɴɪ </>' },
     savedContacts: { type: Array, default: [] }
 }, { collection: 'settings', strict: false });
 
